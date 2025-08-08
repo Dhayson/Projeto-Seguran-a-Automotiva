@@ -1,0 +1,1 @@
+<p>Isso deve ser executado no Raspberry Pi conectado no barramento CAN, para ouvir e injetar mensagens.</p>
