@@ -1,0 +1,81 @@
+VERSION ""
+
+
+NS_ : 
+		NS_DESC_
+		CM_
+		BA_DEF_
+		BA_
+		VAL_
+		CAT_DEF_
+		CAT_
+		FILTER
+		BA_DEF_DEF_
+		EV_DATA_
+		ENVVAR_DATA_
+		SGTYPE_
+		SGTYPE_VAL_
+		BA_DEF_SGTYPE_
+		BA_SGTYPE_
+		SIG_TYPE_REF_
+		VAL_TABLE_
+		SIG_GROUP_
+		SIG_VALTYPE_
+		SIGTYPE_VALTYPE_
+		BO_TX_BU_
+		BA_DEF_REL_
+		BA_REL_
+		BA_DEF_DEF_REL_
+		BU_SG_REL_
+		BU_EV_REL_
+		BU_BO_REL_
+		SG_MUL_VAL_
+
+BS_:
+
+BU_:
+
+
+BO_ 152 HornSwitch: 8 Vector__XXX
+	SG_ HornSwitch : 24|1@1+ (1,0) [0|1] "ON/OFF" Vector__XXX
+
+BO_ 162 HornOperation: 8 Vector__XXX
+	SG_ HornOperation : 24|1@1+ (1,0) [0|1] "ON/OFF" Vector__XXX
+
+BO_ 646 DoorsLockUnlock: 8 Vector__XXX
+	SG_ Door1 : 24|1@1+ (1,0) [0|1] "ON/OFF" Vector__XXX
+	SG_ Door2 : 25|1@1+ (1,0) [0|1] "ON/OFF" Vector__XXX
+	SG_ Door3 : 26|1@1+ (1,0) [0|1] "ON/OFF" Vector__XXX
+	SG_ Door4 : 27|1@1+ (1,0) [0|1] "ON/OFF" Vector__XXX
+
+BO_ 656 DoorsOpenClosedLockUnlock: 8 Vector__XXX
+	SG_ Door1 : 24|2@1+ (1,0) [0|10] "ON/OFF" Vector__XXX
+	SG_ Door2 : 26|2@1+ (1,0) [0|10] "ON/OFF" Vector__XXX
+	SG_ Door3 : 28|2@1+ (1,0) [0|10] "ON/OFF" Vector__XXX
+	SG_ Door4 : 30|2@1+ (1,0) [0|10] "ON/OFF" Vector__XXX
+
+
+CM_ BO_ 152 "Ativa e dasativa a buzina";
+CM_ SG_ 152 HornSwitch "Actual engine speed which is calculated over a minimum crankshaft angle of 720 degrees divided by the number of cylinders.â€¦";
+CM_ BO_ 162 "Sinaliza o estado da buzina";
+CM_ SG_ 162 HornOperation "Wheel-Based Vehicle Speed: Speed of the vehicle as calculated from wheel or tailshaft speed.";
+CM_ BO_ 646 "Tranca e destranca as portas";
+CM_ BO_ 656 "Sinaliza estado de abertura e trancamento das portas";
+BA_DEF_ SG_  "SPN" INT 0 524287;
+BA_DEF_ BO_  "VFrameFormat" ENUM  "StandardCAN","ExtendedCAN","reserved","J1939PG";
+BA_DEF_  "DatabaseVersion" STRING ;
+BA_DEF_  "BusType" STRING ;
+BA_DEF_  "ProtocolType" STRING ;
+BA_DEF_  "DatabaseCompiler" STRING ;
+BA_DEF_DEF_  "SPN" 0;
+BA_DEF_DEF_  "VFrameFormat" "J1939PG";
+BA_DEF_DEF_  "DatabaseVersion" "DEMO PLUS";
+BA_DEF_DEF_  "BusType" "";
+BA_DEF_DEF_  "ProtocolType" "";
+BA_DEF_DEF_  "DatabaseCompiler" "";
+BA_ "ProtocolType" "J1939";
+BA_ "BusType" "CAN";
+BA_ "DatabaseCompiler" "CSS ELECTRONICS (WWW.CSSELECTRONICS.COM)";
+BA_ "DatabaseVersion" "1.0.0";
+BA_ "VFrameFormat" BO_ 152 3;
+BA_ "VFrameFormat" BO_ 162 3;
