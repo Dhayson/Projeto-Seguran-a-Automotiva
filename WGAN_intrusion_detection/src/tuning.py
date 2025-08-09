@@ -3,10 +3,10 @@ import pandas as pd
 import torch
 import torch_optimizer
 import optuna
-from src.early_stop import EarlyStopping
-from src.into_dataloader import IntoDataset
-from src.wgan.self_attention_wgan import TrainSelfAttentionGP
-from src.transform import MeanNormalizeTensor, MinMaxNormalizeTensor
+from WGAN_intrusion_detection.src.early_stop import EarlyStopping
+from WGAN_intrusion_detection.src.into_dataloader import IntoDataset
+from WGAN_intrusion_detection.src.wgan.self_attention_wgan import TrainSelfAttentionGP
+from WGAN_intrusion_detection.src.transform import MeanNormalizeTensor, MinMaxNormalizeTensor
 
 def TuneSA(df_train: pd.DataFrame, df_val: pd.DataFrame, y_val: pd.Series, sa_layers = 1):
     def objective(trial: optuna.trial.Trial):

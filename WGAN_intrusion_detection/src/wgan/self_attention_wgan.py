@@ -4,12 +4,12 @@ import torch.nn as nn
 import torch
 import torch_optimizer
 
-from src.early_stop import EarlyStopping
-from src.self_attention import SelfAttention
-from src.self_attention import PositionalEncoding
+from WGAN_intrusion_detection.src.early_stop import EarlyStopping
+from WGAN_intrusion_detection.src.self_attention import SelfAttention
+from WGAN_intrusion_detection.src.self_attention import PositionalEncoding
 
-from src.wgan.wgan import Generator, Discriminator, WganTrain
-from src.into_dataloader import IntoDataset
+from WGAN_intrusion_detection.src.wgan.wgan import Generator, Discriminator, WganTrain
+from WGAN_intrusion_detection.src.into_dataloader import IntoDataset
 
 
 

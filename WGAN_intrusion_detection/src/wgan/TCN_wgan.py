@@ -1,20 +1,27 @@
 import sys
 import pandas as pd
 import numpy as np
+from numpy.random import RandomState
 import torch
 import torch_optimizer
+from ipaddress import IPv4Address
 import random
 import time
 
-# Importa o módulo de métricas (certifique-se de que o caminho está correto)
-import src.metrics as metrics
+# Importa as funções do projeto
+from WGAN_intrusion_detection.src.import_dataset import GetDataset
+from WGAN_intrusion_detection.src.dataset_split import SplitDataset
+import WGAN_intrusion_detection.src.metrics as metrics
+from WGAN_intrusion_detection.src.early_stop import EarlyStopping
+
+from WGAN_intrusion_detection.src.into_dataloader import IntoDataset
 
 # ------------------------------------------------------------
 # Dataset personalizado: cada amostra é uma janela temporal
 class TimeWindowDataset(torch.utils.data.Dataset):
     def __init__(self, df: pd.DataFrame, time_window: int = 40):
         super().__init__()
-        # Converte o DataFrame para array NumPy para indexação posicional
+        # Converte o DataFrame para um array NumPy para indexação por posição
         self.data = df.to_numpy().astype(np.float32)
         self.time_window = time_window
         self.num_samples = len(self.data) - time_window + 1
@@ -66,7 +73,6 @@ class TCNGenerator(torch.nn.Module):
         self.output_linear = torch.nn.Linear(num_channels, output_dim)
     
     def forward(self, z):
-        # z: (batch, time_window, latent_dim)
         x = self.input_linear(z)  # (batch, time_window, num_channels)
         x = x.transpose(1, 2)     # (batch, num_channels, time_window)
         for block in self.tcn_blocks:
@@ -87,7 +93,6 @@ class TCNDiscriminator(torch.nn.Module):
         self.output_linear = torch.nn.Linear(num_channels, 1)
     
     def forward(self, x):
-        # x: (batch, time_window, input_dim)
         x = self.input_linear(x)   # (batch, time_window, num_channels)
         x = x.transpose(1, 2)      # (batch, num_channels, time_window)
         for block in self.tcn_blocks:
@@ -97,14 +102,14 @@ class TCNDiscriminator(torch.nn.Module):
         return out.squeeze(1)
 
 # ------------------------------------------------------------
-# Função de treinamento para TCN-based WGAN-GP
-def TrainTCNGP(df_train: pd.DataFrame,
+# Função de treinamento para TCN-based WGAN
+def TrainTCN(df_train: pd.DataFrame,
              latent_dim, output_dim, input_dim,
              lrd, lrg, epochs,
              dataset_val: pd.DataFrame = None,
              y_val=None,
-             n_critic=5,
-             optim=torch.optim.RMSprop,  # Pode ser Adam, por exemplo
+             n_critic=5, clip_value=1,
+             optim=torch.optim.RMSprop,
              wdd=1e-2, wdg=1e-2,
              early_stopping=None,
              dropout=0.2,
@@ -115,9 +120,10 @@ def TrainTCNGP(df_train: pd.DataFrame,
              num_layers=3,
              do_print=False,
              step_by_step=False):
+    import time
     device = "cuda" if torch.cuda.is_available() else "cpu"
     # Cria dataset de treino (janelas temporais)
-    dataset_train = TimeWindowDataset(df_train, time_window)
+    dataset_train = IntoDataset(df_train, time_window=time_window)
     dataloader_train = torch.utils.data.DataLoader(dataset_train, batch_size=batch_size, shuffle=True)
     
     generator = TCNGenerator(latent_dim, output_dim, num_channels, num_layers, dropout=dropout)
@@ -131,7 +137,6 @@ def TrainTCNGP(df_train: pd.DataFrame,
     batches_done = 0
     i = -print_each_n // 2
     start_all = time.time()
-    lambda_gp = 10  # Peso do gradient penalty
     
     for epoch in range(epochs):
         generator.train()
@@ -139,42 +144,17 @@ def TrainTCNGP(df_train: pd.DataFrame,
         start = time.time()
         for batch in dataloader_train:
             real_data = batch.to(device)
-            current_batch_size = real_data.size(0)  # Usa o tamanho real do batch
             optimizer_D.zero_grad()
-            
-            # Gera dados falsos usando current_batch_size
-            z = torch.randn(current_batch_size, time_window, latent_dim, device=device)
+            z = torch.randn(batch_size, time_window, latent_dim, device=device)
             fake_data = generator(z).detach()
             
-            # Saídas do discriminador para dados reais e falsos
             disc_real = discriminator(real_data)
             disc_fake = discriminator(fake_data)
-            
-            # Perda base da WGAN
             loss_D = -torch.mean(disc_real) + torch.mean(disc_fake)
-            
-            # Cálculo do gradient penalty
-            alpha = torch.rand(current_batch_size, 1, 1, device=device)
-            interpolates = alpha * real_data + (1 - alpha) * fake_data
-            interpolates.requires_grad_(True)
-            disc_interpolates = discriminator(interpolates)
-            grad_outputs = torch.ones_like(disc_interpolates, device=device)
-            gradients = torch.autograd.grad(
-                outputs=disc_interpolates,
-                inputs=interpolates,
-                grad_outputs=grad_outputs,
-                create_graph=True,
-                retain_graph=True,
-                only_inputs=True
-            )[0]
-            gradients = gradients.view(current_batch_size, -1)
-            gradient_penalty = lambda_gp * ((gradients.norm(2, dim=1) - 1) ** 2).mean()
-            
-            # Incorpora o gradient penalty na perda do discriminador
-            loss_D += gradient_penalty
             loss_D.backward()
             optimizer_D.step()
-            
+            for p in discriminator.parameters():
+                p.data.clamp_(-clip_value, clip_value)
             i += 1
             if i % n_critic == 0:
                 optimizer_G.zero_grad()
@@ -193,15 +173,11 @@ def TrainTCNGP(df_train: pd.DataFrame,
         print()
         print(f"Tempo de treinamento da Epoch {epoch+1}: {end - start:.3f} segundos")
         
-        # Validação (se dataset_val e y_val forem fornecidos)
         if dataset_val is not None and y_val is not None:
             discriminator.eval()
-            val_dataset = TimeWindowDataset(dataset_val, time_window)
-            preds = discriminate(discriminator, val_dataset, time_window=time_window, batch_size=400, device=device)
-            # Ajusta os rótulos para que correspondam ao rótulo da última linha de cada janela
-            adjusted_y_val = y_val[time_window - 1:]
+            preds = discriminate(discriminator, IntoDataset(dataset_val, time_window=time_window), device=device)
             try:
-                auc = metrics.roc_auc_score(adjusted_y_val, preds)
+                auc = metrics.roc_auc_score(y_val, preds)
             except Exception as e:
                 auc = 0.0
                 print("Erro ao calcular AUC:", e)
@@ -211,22 +187,22 @@ def TrainTCNGP(df_train: pd.DataFrame,
                 early_stopping(auc, discriminator, generator)
                 if early_stopping.early_stop:
                     print(f"Treinamento interrompido pelo early stopping na Epoch {epoch+1}")
-                    generator = torch.load(early_stopping.path2, map_location=device)
-                    discriminator = torch.load(early_stopping.path, map_location=device)
+                    generator = torch.load(early_stopping.path2, weights_only=False, map_location=device)
+                    discriminator = torch.load(early_stopping.path, weights_only=False, map_location=device)
                     return generator, discriminator
             discriminator.train()
     
     end_all = time.time()
     print(f"Tempo total de treinamento: {end_all - start_all:.3f} segundos")
     if early_stopping is not None:
-        generator = torch.load(early_stopping.path2, map_location=device)
-        discriminator = torch.load(early_stopping.path, map_location=device)
+        generator = torch.load(early_stopping.path2, weights_only=False, map_location=device)
+        discriminator = torch.load(early_stopping.path, weights_only=False, map_location=device)
     return generator, discriminator
 
 # ------------------------------------------------------------
 # Função de inferência: cria janelas e retorna scores
 @torch.no_grad()
-def discriminate(discriminator: torch.nn.Module, dataset_val: torch.utils.data.Dataset, time_window=40, batch_size=400, device="cpu"):
+def discriminate(discriminator: torch.nn.Module, dataset_val: IntoDataset, time_window=40, batch_size=400, device="cpu"):
     loader = torch.utils.data.DataLoader(dataset_val, batch_size=batch_size, shuffle=False)
     scores = []
     start = time.time()
@@ -235,11 +211,16 @@ def discriminate(discriminator: torch.nn.Module, dataset_val: torch.utils.data.D
         batch = batch.to(device)
         out = discriminator(batch).cpu().numpy()
         scores.extend([-s for s in out])
-        if i % 50 == 0:
+        if i%50 == 0:
             print(f"\r[Validating] [Sample {i} / {len(loader)}] [Score {np.squeeze(np.mean(out[0]))}]", end="")
-        i += 1
+            sys.stdout.flush()
+        i+=1
+
     end = time.time()
+    
     print(f"Validation time: {end-start}")
     if batch_size == 1:
         print(f"Average detection time: {(end-start)/len(dataset_val)} seconds")
-    return scores 
+    
+    
+    return scores

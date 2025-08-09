@@ -1,5 +1,5 @@
-from src.import_dataset import GetDataset
-from src.dataset_split import SplitDataset
+from WGAN_intrusion_detection.src.import_dataset import GetDataset
+from WGAN_intrusion_detection.src.dataset_split import SplitDataset
 import sys
 import pandas as pd
 from numpy.random import RandomState

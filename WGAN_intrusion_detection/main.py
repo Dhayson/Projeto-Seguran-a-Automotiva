@@ -1,16 +1,16 @@
-from src.import_dataset import GetDataset
-from src.import_dataset_alt import GetDataset2017
-from src.dataset_split import SplitDataset
-from src.wgan.wgan import discriminate, Discriminator, Generator, cuda
-from src.wgan.lstm_wgan import TrainLSTM
-from src.wgan.linear_wgan import TrainLinear
-from src.wgan.self_attention_wgan import RunModelSelfAttention2019, RunModelSelfAttention2017, RunModelSelfAttentionGP2019, RunModelSelfAttentionGP2017
-from src.wgan.TCN_train import RunModelTCN2019, RunModelTCN2017
-from src.wgan.TCN_train_wgangp import RunModelTCNGP2019, RunModelTCNGP2017
-from src.tuning import TuneSA, TuneWganGPSA
-from src.wgan.wgan import discriminate, Discriminator, Generator, cuda
-from src.wgan.TCN_wgan import discriminate as discriminateTCN
-import src.metrics as metrics
+from WGAN_intrusion_detection.src.import_dataset import GetDataset
+from WGAN_intrusion_detection.src.import_dataset_alt import GetDataset2017
+from WGAN_intrusion_detection.src.dataset_split import SplitDataset
+from WGAN_intrusion_detection.src.wgan.wgan import discriminate, Discriminator, Generator, cuda
+from WGAN_intrusion_detection.src.wgan.lstm_wgan import TrainLSTM
+from WGAN_intrusion_detection.src.wgan.linear_wgan import TrainLinear
+from WGAN_intrusion_detection.src.wgan.self_attention_wgan import RunModelSelfAttention2019, RunModelSelfAttention2017, RunModelSelfAttentionGP2019, RunModelSelfAttentionGP2017
+from WGAN_intrusion_detection.src.wgan.TCN_train import RunModelTCN2019, RunModelTCN2017
+from WGAN_intrusion_detection.src.wgan.TCN_train_wgangp import RunModelTCNGP2019, RunModelTCNGP2017
+from WGAN_intrusion_detection.src.tuning import TuneSA, TuneWganGPSA
+from WGAN_intrusion_detection.src.wgan.wgan import discriminate, Discriminator, Generator, cuda
+from WGAN_intrusion_detection.src.wgan.TCN_wgan import discriminate as discriminateTCN
+import WGAN_intrusion_detection.src.metrics as metrics
 import sys
 import numpy as np
 import pandas as pd
@@ -19,10 +19,10 @@ import torch
 import torch_optimizer
 from ipaddress import IPv4Address
 import random
-from src.early_stop import EarlyStopping
+from WGAN_intrusion_detection.src.early_stop import EarlyStopping
 from optuna.pruners import MedianPruner
-from src.into_dataloader import IntoDataset, IntoDatasetNoTime
-from src.transform import MeanNormalizeTensor, MinMaxNormalizeTensor
+from WGAN_intrusion_detection.src.into_dataloader import IntoDataset, IntoDatasetNoTime
+from WGAN_intrusion_detection.src.transform import MeanNormalizeTensor, MinMaxNormalizeTensor
 
 
 def DescartarDuplicatas(dataset: pd.DataFrame, do_print=False):
@@ -241,7 +241,7 @@ def main():
                     internal_g=internal_dim,
                     trial=trial
                 )
-                from src.into_dataloader import IntoDataset
+                from WGAN_intrusion_detection.src.into_dataloader import IntoDataset
                 dataset_val = IntoDataset(df_val, time_window=80)
                 preds = discriminate(discriminator, dataset_val, time_window=80, batch_size=400)
                 preds = np.mean(np.array(preds), axis=1)

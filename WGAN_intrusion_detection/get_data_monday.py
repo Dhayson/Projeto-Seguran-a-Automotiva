@@ -1,5 +1,5 @@
-from src.import_dataset_alt import GetDataset2017
-from src.dataset_split import SplitDataset
+from WGAN_intrusion_detection.src.import_dataset_alt import GetDataset2017
+from WGAN_intrusion_detection.src.dataset_split import SplitDataset
 import sys
 import numpy as np
 import pandas as pd

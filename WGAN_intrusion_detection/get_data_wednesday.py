@@ -1,5 +1,5 @@
-from src.import_dataset_alt import GetDataset2017
-from src.dataset_split import SplitDataset
+from WGAN_intrusion_detection.src.import_dataset_alt import GetDataset2017
+from WGAN_intrusion_detection.src.dataset_split import SplitDataset
 import sys
 import numpy as np
 import pandas as pd
@@ -28,17 +28,20 @@ def main():
         
     
     for kind in [
-            "Bot",
-            "PortScan",
-            "DDoS"
+            "DoS Hulk",
+            "DoS GoldenEye",
+            "DrDoS_NetBIOS",
+            "DoS slowloris",
+            "DoS Slowhttptest",
+            "Heartbleed",
         ]:
-        num = 24022
+        num = 40000
         df_label = df_wednesday[df_wednesday["Label"] == kind].head(n=num).copy(deep=True)
         df_wednesday = df_wednesday[df_wednesday["Label"] != kind]
         df_wednesday = pd.concat([df_wednesday, df_label])
     
     print(df_wednesday['Label'].value_counts())
-    df_wednesday.to_csv("dataset_alternative_filtered/Day5/friday.csv", encoding='cp1252', index=False)
+    df_wednesday.to_csv("dataset_alternative_filtered/Day3/wednesday.csv", encoding='cp1252', index=False)
     print()
 
 if __name__ == '__main__':

@@ -1,96 +1,66 @@
-import pandas as pd
 import time
 import numpy as np
+import pandas as pd
+import sys
 
 import torch.nn as nn
 import torch
-import optuna
+import WGAN_intrusion_detection.src.metrics as metrics
+from sklearn.metrics import roc_auc_score
 
-from src.early_stop import EarlyStopping
+from WGAN_intrusion_detection.src.early_stop import EarlyStopping
+from WGAN_intrusion_detection.src.into_dataloader import IntoDataset
 
-from src.wgan.wgan import Generator, Discriminator
-from src.into_dataloader import IntoDataset
-from src.lstm import LSTM
 from torch.utils.data import DataLoader
-from src.wgan.wgan import discriminate
-from src.metrics import roc_auc_score
-import src.metrics as metrics
+
+from WGAN_intrusion_detection.src.lstm import LSTM
 
 cuda = True if torch.cuda.is_available() else False
 device = "cuda" if cuda else "cpu"
 
-def block_mlp(in_feat, out_feat, leak = 0.0):
-    layers = [nn.Linear(in_feat, out_feat)]
-    layers.append(nn.LeakyReLU(negative_slope=leak, inplace=True))
-    return layers
+def gradient_penalty(real, fake, discriminator):
+    # epsilon serve para calcular a interpolação entre os dados reais e falsos
+    epsilon = torch.rand(real.shape).to(device)
 
-class GeneratorLSTM(nn.Module):
-    def __init__(self, data_shape, latent_dim, internal_dim, dropout=0.2):
-        super(GeneratorLSTM, self).__init__()
-        self.data_shape = data_shape
-        self.latent_dim = latent_dim
-        
-        # TODO: alterar arquitetura para usar TCN e self attention
-        self.fc1 = nn.Sequential(
-            *block_mlp(latent_dim, internal_dim, leak=0.1),
-        )
-        self.lstm = LSTM(internal_dim, internal_dim, dropout)
-        self.fc2 = nn.Sequential(
-            nn.Linear(internal_dim, int(data_shape[1])),
-            nn.Sigmoid(),
-        )
-        self.flat = nn.Flatten(0)
-
-    def forward(self, z):
-        data = self.fc1(z)
-        data = self.lstm(data)
-        data = self.fc2(data)
-        return data
-
-class DiscriminatorLSTM(nn.Module):
-    def __init__(self, data_shape, internal_dim, dropout=0.2):
-        super(DiscriminatorLSTM, self).__init__()
-        self.fc1 = nn.Sequential(
-            *block_mlp(int(data_shape[1]), internal_dim, leak=0.1),
-        )
-        self.lstm = LSTM(internal_dim, internal_dim, dropout)   
-        self.fc2 = nn.Sequential(
-            nn.Linear(internal_dim, 1),
-            nn.Sigmoid(),
-        )
-
-    def forward(self, data, do_print=False):
-        if do_print:
-            print("DISCRIMINATOR")
-            print(data.shape)
-        z1 = self.fc1(data)
-        if do_print:
-            print(z1.shape)
-        za = self.lstm(z1)
-        if do_print:
-            print(za.shape)
-        val = self.fc2(za)
-        if do_print:
-            print(val.shape)
-            print()
-        return val
+    # interpolação por meio do discriminador
+    interpolated_data = real*epsilon + (1 - epsilon)*fake
+    interpolated_data.requires_grad_(True)
     
-def TrainLSTM(df_train: pd.DataFrame, lrd, lrg, epochs, df_val: pd.DataFrame = None, y_val: pd.Series = None, n_critic = 5, 
-    clip_value = 1, latent_dim = 30, optim = torch.optim.RMSprop, wdd = 1e-2, wdg = 1e-2, early_stopping: EarlyStopping = None, dropout=0.2,
-    print_each_n = 100, time_window = 40, batch_size=5, do_print = False, step_by_step = False, internal_d=400, internal_g=400, trial = None
-    ) -> tuple[GeneratorLSTM, DiscriminatorLSTM]:
-    dataset_train = IntoDataset(df_train, time_window)
-    dataset_val = IntoDataset(df_val, time_window)
+    interpolated_scores = discriminator(interpolated_data)
+
+    # cálculo do gradiente
+    gradient = torch.autograd.grad(
+        inputs = interpolated_data,
+        outputs = interpolated_scores,
+        grad_outputs = torch.ones_like(interpolated_scores),
+        create_graph = True,
+        retain_graph = True
+    )[0]
+
+    gradient = gradient.view(len(gradient), -1)
+    gradient_norm = gradient.norm(2, dim=1)
+    gradient_penalty = torch.mean((gradient_norm - 1)**2)
+    
+    return gradient_penalty
+
+class Generator(nn.Module):
+    def __init__(self, *args, **kwargs):
+        super(Generator, self).__init__()
+
+class Discriminator(nn.Module):
+    def __init__(self, *args, **kwargs):
+        super(Discriminator, self).__init__()
+
+def WganTrain(dataset_train: IntoDataset, generator: Generator, discriminator: Discriminator, lrd, lrg, epochs, dataset_val: IntoDataset = None, y_val: pd.Series = None, n_critic = 5, 
+    clip_value = None, latent_dim = 30, optim = torch.optim.RMSprop, wdd = 1e-2, wdg = 1e-2, early_stopping: EarlyStopping = None, dropout=0.2,
+    print_each_n = 20, time_window = 40, batch_size=5, do_print = False, step_by_step = False, return_auc = False, lambda_penalty = 0.05) -> tuple[Generator, Discriminator]:
     dataloader_train = DataLoader(dataset_train, batch_size=batch_size, shuffle=True)
     
+    best_auc_score = 0;
     data_ex = dataset_train[0]
     # print(data_ex)
     data_shape = data_ex.shape
-    # print('data_shape', data_shape)
-    
-    # Initialize generator and discriminator
-    generator = GeneratorLSTM(data_shape, latent_dim, internal_d, dropout=dropout)
-    discriminator = DiscriminatorLSTM(data_shape, internal_d, dropout=dropout)
+    # print(data_shape)
 
     if cuda:
         print("INFO: Using cuda to train")
@@ -119,9 +89,11 @@ def TrainLSTM(df_train: pd.DataFrame, lrd, lrg, epochs, df_val: pd.DataFrame = N
             # ---------------------
 
             optimizer_D.zero_grad()
-
             # Sample noise as generator input
-            z = torch.tensor(np.random.normal(0, 1, (batch_size, time_window, latent_dim)), device=device, dtype=torch.float32)
+            if (real_data.shape[0] < batch_size):
+                z = torch.tensor(np.random.normal(0, 1, (real_data.shape[0], time_window, latent_dim)), device=device, dtype=torch.float32)
+            else:
+                z = torch.tensor(np.random.normal(0, 1, (batch_size, time_window, latent_dim)), device=device, dtype=torch.float32)
             # print("latent shape", z.shape)
 
             # Generate a batch of images
@@ -144,8 +116,14 @@ def TrainLSTM(df_train: pd.DataFrame, lrd, lrg, epochs, df_val: pd.DataFrame = N
             optimizer_D.step()
 
             # Clip weights of discriminator
-            for p in discriminator.parameters():
-                p.data.clamp_(-clip_value, clip_value)
+            if clip_value is not None:
+                for p in discriminator.parameters():
+                    p.data.clamp_(-clip_value, clip_value)
+            
+            # Gradient penalty
+            if lambda_penalty is not None:
+                penalty = gradient_penalty(real_data, fake_data, discriminator)
+                loss_D += penalty * lambda_penalty
 
             # Train the generator every n_critic iterations
             i += 1
@@ -171,6 +149,7 @@ def TrainLSTM(df_train: pd.DataFrame, lrd, lrg, epochs, df_val: pd.DataFrame = N
                         % (epoch+1, epochs, batches_done % len(dataloader_train), len(dataloader_train), loss_D_true.item(), loss_D_fake.item(), loss_G.item()),
                         end=""
                     )
+                    sys.stdout.flush()
                     if do_print and False:
                         print("fake: ", fake_data)
                         print("real: ", real_data)
@@ -181,22 +160,17 @@ def TrainLSTM(df_train: pd.DataFrame, lrd, lrg, epochs, df_val: pd.DataFrame = N
         end = time.time()
         print()
         print(f"Epoch training time: {end-start:.3f} seconds")
-        if df_val is not None and y_val is not None:
+        if dataset_val is not None and y_val is not None:
             discriminator.eval()
             preds = discriminate(discriminator, dataset_val, time_window)
-            preds = np.mean(preds, axis=1)
-            preds = np.squeeze(preds)
             best_thresh = metrics.best_validation_threshold(y_val, preds)
             thresh = best_thresh["thresholds"]
             auc_score = roc_auc_score(y_val, preds)
+            if auc_score > best_auc_score:
+                best_auc_score = auc_score
             print("\nValidation accuracy: ", metrics.accuracy(y_val, preds > thresh))
             print("AUC score: ", auc_score, "\n")
             # Mecanismo de early stopping
-            if trial is not None:
-                trial.report(auc_score, epoch)
-                if trial.should_prune():
-                    raise optuna.TrialPruned()
-                
             if early_stopping is not None:
                 early_stopping(auc_score, discriminator, generator)
                 if early_stopping.early_stop:
@@ -205,11 +179,46 @@ def TrainLSTM(df_train: pd.DataFrame, lrd, lrg, epochs, df_val: pd.DataFrame = N
                     print(f"Total Training time: {end_all-start_all:.3f} seconds")
                     discriminator = torch.load('checkpoint.pt', weights_only = False)
                     generator = torch.load('checkpoint2.pt', weights_only = False)
-                    return generator, discriminator
+                    if return_auc:
+                        return generator, discriminator, best_auc_score
+                    else:
+                        return generator, discriminator
             discriminator.train()
         
     end_all = time.time()
     print(f"Total Training time: {end_all-start_all:.3f} seconds")
     discriminator = torch.load('checkpoint.pt', weights_only = False)
     generator = torch.load('checkpoint2.pt', weights_only = False)
-    return generator, discriminator
+    if return_auc:
+        return generator, discriminator, best_auc_score
+    else:
+        return generator, discriminator
+
+@torch.no_grad
+def discriminate(discriminator: Discriminator, dataset_val: IntoDataset, time_window = 40, batch_size=400, lim=None) -> list: 
+    dataloader_val = DataLoader(dataset_val, batch_size, shuffle=False)
+    
+    scores = []
+    i = 0
+    start = time.time()
+    for batch in dataloader_val:
+        data = batch.to(device)
+        # print(data.shape)
+        score = discriminator(data, do_print=False).cpu().detach().numpy()
+        if i%50 == 0:
+            print(f"\r[Validating] [Sample {i} / {len(dataloader_val)}] [Score {np.squeeze(np.mean(score[0]))}]", end="")
+            sys.stdout.flush()
+        i+=1
+        for s in score:
+            scores.append(-s)
+        if i == lim:
+            break
+    end = time.time()
+    print()
+    print(f"Validation time: {end-start}")
+    if batch_size == 1:
+        if lim is not None:
+            print(f"Average detection time: {(end-start)/lim} seconds")
+        else:
+            print(f"Average detection time: {(end-start)/len(dataset_val)} seconds")
+    return scores

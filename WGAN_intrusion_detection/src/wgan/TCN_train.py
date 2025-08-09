@@ -8,12 +8,12 @@ from ipaddress import IPv4Address
 import random
 
 # Importa as funções do projeto
-from src.import_dataset import GetDataset
-from src.import_dataset_alt import GetDataset2017
-from src.dataset_split import SplitDataset
-import src.metrics as metrics
-from src.early_stop import EarlyStopping
-from src.wgan.TCN_wgan import *
+from WGAN_intrusion_detection.src.import_dataset import GetDataset
+from WGAN_intrusion_detection.src.import_dataset_alt import GetDataset2017
+from WGAN_intrusion_detection.src.dataset_split import SplitDataset
+import WGAN_intrusion_detection.src.metrics as metrics
+from WGAN_intrusion_detection.src.early_stop import EarlyStopping
+from WGAN_intrusion_detection.src.wgan.TCN_wgan import *
 import optuna
 
 # ------------------------------------------------------------

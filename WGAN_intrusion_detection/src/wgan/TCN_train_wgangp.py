@@ -6,14 +6,14 @@ from ipaddress import IPv4Address
 from numpy.random import RandomState
 
 # Importa funções auxiliares do projeto
-from src.import_dataset import GetDataset
-from src.dataset_split import SplitDataset
-import src.metrics as metrics
-from src.early_stop import EarlyStopping
+from WGAN_intrusion_detection.src.import_dataset import GetDataset
+from WGAN_intrusion_detection.src.dataset_split import SplitDataset
+import WGAN_intrusion_detection.src.metrics as metrics
+from WGAN_intrusion_detection.src.early_stop import EarlyStopping
 import optuna
 import torch_optimizer
 # Importa as funções implementadas na WGAN-GP (arquivo separado)
-from src.wgan.TCN_wgan import TrainTCN, discriminate
+from WGAN_intrusion_detection.src.wgan.TCN_wgan import TrainTCN, discriminate
 import sys
 import pandas as pd
 import numpy as np
@@ -25,12 +25,12 @@ from ipaddress import IPv4Address
 import optuna
 
 # Importa funções auxiliares do projeto
-from src.import_dataset import GetDataset
-from src.import_dataset_alt import GetDataset2017
+from WGAN_intrusion_detection.src.import_dataset import GetDataset
+from WGAN_intrusion_detection.src.import_dataset_alt import GetDataset2017
 
-from src.dataset_split import SplitDataset
-import src.metrics as metrics
-from src.early_stop import EarlyStopping
+from WGAN_intrusion_detection.src.dataset_split import SplitDataset
+import WGAN_intrusion_detection.src.metrics as metrics
+from WGAN_intrusion_detection.src.early_stop import EarlyStopping
 
 # ------------------------------------------------------------
 # Função para definir a seed e garantir replicabilidade

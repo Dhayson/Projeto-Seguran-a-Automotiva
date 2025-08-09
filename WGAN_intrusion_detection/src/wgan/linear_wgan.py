@@ -4,9 +4,9 @@ import pandas as pd
 import torch.nn as nn
 import torch
 
-from src.early_stop import EarlyStopping
-from src.wgan.wgan import Generator, Discriminator, WganTrain
-from src.into_dataloader import IntoDatasetNoTime
+from WGAN_intrusion_detection.src.early_stop import EarlyStopping
+from WGAN_intrusion_detection.src.wgan.wgan import Generator, Discriminator, WganTrain
+from WGAN_intrusion_detection.src.into_dataloader import IntoDatasetNoTime
 
 cuda = True if torch.cuda.is_available() else False
 
