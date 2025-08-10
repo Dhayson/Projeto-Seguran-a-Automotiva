@@ -13,8 +13,12 @@ def convert_log_line(line: str):
     id = int(body_parts[0], 16)
     data = body_parts[1]
     data_bytes = []
-    for i in range(0, len(data), 2):
-        data_bytes.append(int(f"0x{data[i:i+2]}",16))
+    if data == "0" or data == "":
+        # Zera os data bytes para mensagens sem dados
+        data_bytes = [0]*7
+    else:
+        for i in range(0, len(data), 2):
+            data_bytes.append(int(f"0x{data[i:i+2]}",16))
         
     dir = {
         'timestamp': timestamp,
