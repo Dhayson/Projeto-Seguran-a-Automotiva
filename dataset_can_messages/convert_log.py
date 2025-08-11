@@ -30,6 +30,7 @@ def convert_log_line(line: str):
         'data_4': data_bytes[4],
         'data_5': data_bytes[5],
         'data_6': data_bytes[6],
+        'Label': "Benign"
     }
     serie = pandas.Series(dir)
     return serie
