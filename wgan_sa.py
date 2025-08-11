@@ -3,6 +3,7 @@ import numpy as np
 import pandas as pd
 from numpy.random import RandomState
 import torch
+import can
 
 from WGAN_intrusion_detection.src.transform import MeanNormalizeTensor, MinMaxNormalizeTensor
 from WGAN_intrusion_detection.src.into_dataloader import IntoDataset
@@ -10,6 +11,41 @@ from WGAN_intrusion_detection.src.wgan.self_attention_wgan import TrainSelfAtten
 from WGAN_intrusion_detection.src.early_stop import EarlyStopping
 from WGAN_intrusion_detection.src.wgan.wgan import discriminate, Discriminator, Generator, cuda
 import WGAN_intrusion_detection.src.metrics as metrics
+
+import logging
+import time
+
+logging.basicConfig(filename=f"bus-{time.time()}.log", level=logging.INFO, format='%(message)s')
+
+def convert_log_line(line: str):
+    if line == "Created a socket" or line == "":
+        return None
+    segments = line.split(" ")
+    timestamp = float(segments[0][1:-1])
+    body = segments[2]
+    body_parts = body.split("#")
+    id = int(body_parts[0], 16)
+    data = body_parts[1]
+    data_bytes = []
+    if data == "0" or data == "":
+        # Zera os data bytes para mensagens sem dados
+        data_bytes = [0]*7
+    else:
+        for i in range(0, len(data), 2):
+            data_bytes.append(int(f"0x{data[i:i+2]}",16))
+        
+    dir = {
+        'authentication_id': id,
+        'data_0': data_bytes[0],
+        'data_1': data_bytes[1],
+        'data_2': data_bytes[2],
+        'data_3': data_bytes[3],
+        'data_4': data_bytes[4],
+        'data_5': data_bytes[5],
+        'data_6': data_bytes[6],
+    }
+    serie = pd.Series(dir)
+    return serie
 
 def main():
     # Hiperparametros
@@ -73,6 +109,46 @@ def main():
         print("Fpr: ", best_thresh['fpr'])
         metrics.plot_confusion_matrix(y_val, preds > thresh, name="Self attention wgan")
         metrics.plot_roc_curve(y_val, preds, name="Self attention wgan")
+    
+    elif args[3] == "deploy":
+        # Carrega o discriminador
+        discriminator: Discriminator = torch.load("DiscriminatorSA.torch", weights_only = False, map_location=torch.device(device)).to(device)
+        
+        frame = pd.DataFrame()
+        # Configuração da interface CAN (can0 = exemplo)
+        bus = can.interface.Bus(channel='can0', bustype='socketcan')
+        try:
+            while True:
+                for msg in bus:
+                    # Adiciona a mensagem ao dataframe
+                    dir = {
+                        'authentication_id': msg.arbitration_id,
+                        'data_0': msg.data[0],
+                        'data_1': msg.data[1],
+                        'data_2': msg.data[2],
+                        'data_3': msg.data[3],
+                        'data_4': msg.data[4],
+                        'data_5': msg.data[5],
+                        'data_6': msg.data[6],
+                    }
+                    conversion = pd.Series(dir)
+                    new_row = pd.DataFrame([conversion])
+                    frame = pd.concat([frame, new_row], ignore_index=True)
+                    print(frame)
+                    input()
+                    
+                    # print(msg)
+                    # def createLogLine(msg):
+                    #     payload = "".join(["{:02X}".format(byte) for byte in msg.data])
+                    #     logging.info(f'({msg.timestamp}) {msg.channel} {hex(msg.arbitration_id)}#{payload}')
+                    # createLogLine(msg)
+
+        except KeyboardInterrupt:
+            pass
+
+        # Limpeza da interface CAN
+        bus.shutdown()
+        
         
      
 
