@@ -4,7 +4,7 @@ import datetime
 import logging
 
 # Configuração do logging
-log_filename = f"dos-attack-robust-{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.log"
+log_filename = f"dos-attack-robust-{time.time()}.log"
 logging.basicConfig(filename=log_filename, level=logging.INFO, format='%(message)s')
 
 def create_log_line(msg):

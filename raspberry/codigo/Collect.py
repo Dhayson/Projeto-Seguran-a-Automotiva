@@ -4,7 +4,7 @@ import random
 import datetime
 import logging
 
-logging.basicConfig(filename=f"bus(benign)-{datetime.datetime.now()}.log", level=logging.INFO, format='%(message)s')
+logging.basicConfig(filename=f"bus-{time.time()}.log", level=logging.INFO, format='%(message)s')
 
 def createLogLine(msg):
     payload = "".join(["{:02X}".format(byte) for byte in msg.data])
