@@ -3,10 +3,6 @@ import numpy as np
 import pandas as pd
 from numpy.random import RandomState
 import torch
-import torch_optimizer
-from ipaddress import IPv4Address
-import random
-from optuna.pruners import MedianPruner
 
 from WGAN_intrusion_detection.src.transform import MeanNormalizeTensor, MinMaxNormalizeTensor
 from WGAN_intrusion_detection.src.into_dataloader import IntoDataset
@@ -29,15 +25,13 @@ def main():
     
     # Essa coluna é importante para a dependência temporal!
     df_train = df_benign.sort_values(by = "timestamp", ignore_index=True)
-    df_val = df_spoof
+    df_val = df_spoof.sort_values(by = "timestamp", ignore_index=True)
     
     # Rótulo provisório
-    # TODO: aplicar rótulo no dataset, combinando logs
-    df_val["Label"] = df_val["data_0"] != 0
     df_val_label = df_val["Label"]
     
     # Coluna não usada para treinamento
-    df_train = df_train.drop(["timestamp", "Unnamed: 0"], axis=1)
+    df_train = df_train.drop(["timestamp", "Unnamed: 0", "Label"], axis=1)
     df_val = df_val.drop(["timestamp", "Unnamed: 0", "Label"], axis=1)
     
     # Dispositivo de trainamento
@@ -49,7 +43,7 @@ def main():
      
     # Validação: diferenciar entre benignos (0) e ataques (1)
     # Converte os rótulos para 0 (BENIGN) e 1 (ataque)
-    y_val = df_val_label.apply(lambda c: 0 if not c else 1)
+    y_val = df_val_label.apply(lambda c: 0 if c == "Benign" else 1)
     
     dataset_train = IntoDataset(df_train, time_window, normalization)
     dataset_val = IntoDataset(df_val, time_window, normalization)
