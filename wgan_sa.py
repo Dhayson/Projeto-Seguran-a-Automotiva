@@ -1,4 +1,4 @@
-# import deploy
+import deploy
 import sys
 import numpy as np
 import pandas as pd
@@ -124,7 +124,7 @@ def main():
         try:
             idx = 0
             while True:
-                msg = getFormattedMessageMocked()
+                msg = deploy.getMessageFromBus(deploy.bus)
                 conversion = convert_log_line(msg)
                 new_row = pd.DataFrame([conversion])
                 frame = pd.concat([frame, new_row], ignore_index=True)
