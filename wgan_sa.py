@@ -1,15 +1,52 @@
+import deploy
 import sys
 import numpy as np
 import pandas as pd
 from numpy.random import RandomState
 import torch
-
 from WGAN_intrusion_detection.src.transform import MeanNormalizeTensor, MinMaxNormalizeTensor
 from WGAN_intrusion_detection.src.into_dataloader import IntoDataset
 from WGAN_intrusion_detection.src.wgan.self_attention_wgan import TrainSelfAttention
 from WGAN_intrusion_detection.src.early_stop import EarlyStopping
 from WGAN_intrusion_detection.src.wgan.wgan import discriminate, Discriminator, Generator, cuda
 import WGAN_intrusion_detection.src.metrics as metrics
+
+from torch.nn.functional import pad
+
+import logging
+import time
+
+logging.basicConfig(filename=f"IDS-{time.time()}.log", level=logging.INFO, format='%(message)s')
+
+def convert_log_line(line: str):
+    if line == "Created a socket" or line == "":
+        return None
+    segments = line.split(" ")
+    timestamp = float(segments[0][1:-1])
+    body = segments[2]
+    body_parts = body.split("#")
+    id = int(body_parts[0], 16)
+    data = body_parts[1]
+    data_bytes = []
+    if data == "0" or data == "":
+        # Zera os data bytes para mensagens sem dados
+        data_bytes = [0]*7
+    else:
+        for i in range(0, len(data), 2):
+            data_bytes.append(int(f"0x{data[i:i+2]}",16))
+        
+    dir = {
+        'authentication_id': id,
+        'data_0': data_bytes[0],
+        'data_1': data_bytes[1],
+        'data_2': data_bytes[2],
+        'data_3': data_bytes[3],
+        'data_4': data_bytes[4],
+        'data_5': data_bytes[5],
+        'data_6': data_bytes[6],
+    }
+    serie = pd.Series(dir)
+    return serie
 
 def main():
     # Hiperparametros
@@ -71,8 +108,50 @@ def main():
         print(f"VAL f1: ", metrics.f1_score(y_val, preds > thresh))
         print("Tpr: ", best_thresh['tpr'])
         print("Fpr: ", best_thresh['fpr'])
+        print("Threshold: ", thresh)
         metrics.plot_confusion_matrix(y_val, preds > thresh, name="Self attention wgan")
         metrics.plot_roc_curve(y_val, preds, name="Self attention wgan")
+    
+    elif args[3] == "deploy":
+        # Carrega o discriminador
+        discriminator: Discriminator = torch.load("DiscriminatorSA.torch", weights_only = False, map_location=torch.device(device)).to(device)
+        discriminator = discriminator.eval()
+        frame = pd.DataFrame()
+        
+        def getFormattedMessageMocked():
+            return "(1754943816.0281112) can0 0x43#000000F835000000"
+        
+        try:
+            idx = 0
+            while True:
+                msg = deploy.getMessageFromBus(deploy.bus)
+                conversion = convert_log_line(msg)
+                new_row = pd.DataFrame([conversion])
+                frame = pd.concat([frame, new_row], ignore_index=True)
+                x = frame.iloc[max(0, idx-10):idx+1].to_numpy()
+                idx += 1
+                x_pad = torch.tensor(x, dtype=torch.float32)
+                
+                if x.shape[0] != time_window:
+                    # Realiza padding nos primeiros pacotes
+                    target_size = (time_window, time_window)
+                    pad_rows = target_size[0] - x.shape[0]
+                    x_pad = pad(x_pad, (0, 0, 0, pad_rows), value=0)
+                x_pad = normalization(x_pad)
+                x_pad = x_pad.reshape((1,10,8))
+                data = x_pad.to(device)
+                score = discriminator(data, do_print=False).cpu().detach().numpy()
+                
+                def createLogLine(score):
+                    logging.info(f"({time.time()}) WGAN_SA {"Benign" if score[0][0] else "Attack"}")
+                # Threshold pré calculado
+                createLogLine(score > 29.552196502685547)
+
+        except KeyboardInterrupt:
+            pass
+        # Limpeza da interface CAN
+        deploy.bus.shutdown()
+        
         
      
 
