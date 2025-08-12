@@ -3,8 +3,6 @@ import numpy as np
 import pandas as pd
 from numpy.random import RandomState
 import torch
-import can
-
 from WGAN_intrusion_detection.src.transform import MeanNormalizeTensor, MinMaxNormalizeTensor
 from WGAN_intrusion_detection.src.into_dataloader import IntoDataset
 from WGAN_intrusion_detection.src.wgan.self_attention_wgan import TrainSelfAttention
@@ -12,10 +10,12 @@ from WGAN_intrusion_detection.src.early_stop import EarlyStopping
 from WGAN_intrusion_detection.src.wgan.wgan import discriminate, Discriminator, Generator, cuda
 import WGAN_intrusion_detection.src.metrics as metrics
 
+from torch.nn.functional import pad
+
 import logging
 import time
 
-logging.basicConfig(filename=f"bus-{time.time()}.log", level=logging.INFO, format='%(message)s')
+logging.basicConfig(filename=f"IDS-{time.time()}.log", level=logging.INFO, format='%(message)s')
 
 def convert_log_line(line: str):
     if line == "Created a socket" or line == "":
@@ -107,47 +107,49 @@ def main():
         print(f"VAL f1: ", metrics.f1_score(y_val, preds > thresh))
         print("Tpr: ", best_thresh['tpr'])
         print("Fpr: ", best_thresh['fpr'])
+        print("Threshold: ", thresh)
         metrics.plot_confusion_matrix(y_val, preds > thresh, name="Self attention wgan")
         metrics.plot_roc_curve(y_val, preds, name="Self attention wgan")
     
     elif args[3] == "deploy":
         # Carrega o discriminador
         discriminator: Discriminator = torch.load("DiscriminatorSA.torch", weights_only = False, map_location=torch.device(device)).to(device)
-        
+        discriminator = discriminator.eval()
         frame = pd.DataFrame()
-        # Configuração da interface CAN (can0 = exemplo)
-        bus = can.interface.Bus(channel='can0', bustype='socketcan')
+        
+        def getFormattedMessageMocked():
+            return "(1754943816.0281112) can0 0x43#000000F835000000"
+        
         try:
+            idx = 0
             while True:
-                for msg in bus:
-                    # Adiciona a mensagem ao dataframe
-                    dir = {
-                        'authentication_id': msg.arbitration_id,
-                        'data_0': msg.data[0],
-                        'data_1': msg.data[1],
-                        'data_2': msg.data[2],
-                        'data_3': msg.data[3],
-                        'data_4': msg.data[4],
-                        'data_5': msg.data[5],
-                        'data_6': msg.data[6],
-                    }
-                    conversion = pd.Series(dir)
-                    new_row = pd.DataFrame([conversion])
-                    frame = pd.concat([frame, new_row], ignore_index=True)
-                    print(frame)
-                    input()
-                    
-                    # print(msg)
-                    # def createLogLine(msg):
-                    #     payload = "".join(["{:02X}".format(byte) for byte in msg.data])
-                    #     logging.info(f'({msg.timestamp}) {msg.channel} {hex(msg.arbitration_id)}#{payload}')
-                    # createLogLine(msg)
+                msg = getFormattedMessageMocked()
+                conversion = convert_log_line(msg)
+                new_row = pd.DataFrame([conversion])
+                frame = pd.concat([frame, new_row], ignore_index=True)
+                x = frame.iloc[max(0, idx-10):idx+1].to_numpy()
+                idx += 1
+                x_pad = torch.tensor(x, dtype=torch.float32)
+                
+                if x.shape[0] != time_window:
+                    # Realiza padding nos primeiros pacotes
+                    target_size = (time_window, time_window)
+                    pad_rows = target_size[0] - x.shape[0]
+                    x_pad = pad(x_pad, (0, 0, 0, pad_rows), value=0)
+                x_pad = normalization(x_pad)
+                x_pad = x_pad.reshape((1,10,8))
+                data = x_pad.to(device)
+                score = discriminator(data, do_print=False).cpu().detach().numpy()
+                
+                def createLogLine(score):
+                    logging.info(f"({time.time()}) WGAN_SA {score[0][0]}")
+                # Threshold pré calculado
+                createLogLine(score > 29.552196502685547)
 
         except KeyboardInterrupt:
             pass
-
-        # Limpeza da interface CAN
-        bus.shutdown()
+        # # Limpeza da interface CAN
+        # bus.shutdown()
         
         
      
