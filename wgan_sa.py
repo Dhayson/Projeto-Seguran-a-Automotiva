@@ -1,3 +1,4 @@
+# import deploy
 import sys
 import numpy as np
 import pandas as pd
@@ -142,14 +143,14 @@ def main():
                 score = discriminator(data, do_print=False).cpu().detach().numpy()
                 
                 def createLogLine(score):
-                    logging.info(f"({time.time()}) WGAN_SA {score[0][0]}")
+                    logging.info(f"({time.time()}) WGAN_SA {"Benign" if score[0][0] else "Attack"}")
                 # Threshold pré calculado
                 createLogLine(score > 29.552196502685547)
 
         except KeyboardInterrupt:
             pass
-        # # Limpeza da interface CAN
-        # bus.shutdown()
+        # Limpeza da interface CAN
+        deploy.bus.shutdown()
         
         
      
